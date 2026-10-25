@@ -42,7 +42,8 @@ class CGCNN(torch.nn.Module):
         self.act = act
         self.pool_order = pool_order
         self.dropout_rate = dropout_rate
-        self.get_embedding = True
+        self.get_node_embedding = True
+        self.get_graph_embedding = False
         
         ##Determine gc dimension dimension
         assert gc_count > 0, "Need at least 1 GC layer"        
@@ -146,7 +147,7 @@ class CGCNN(torch.nn.Module):
                     out = self.conv_list[i](out, data.edge_index, data.edge_attr)            
             #out = getattr(F, self.act)(out)
             out = F.dropout(out, p=self.dropout_rate, training=self.training)
-
+        node_embedding = out
         ##Post-GNN dense layers
         if self.pool_order == "early":
             if self.pool == "set2set":
@@ -156,24 +157,35 @@ class CGCNN(torch.nn.Module):
             for i in range(0, len(self.post_lin_list)):
                 out = self.post_lin_list[i](out)
                 out = getattr(F, self.act)(out)
-            embedding =out
+            graph_embedding =out
             out = self.lin_out(out)
 
         elif self.pool_order == "late":
             for i in range(0, len(self.post_lin_list)):
                 out = self.post_lin_list[i](out)
                 out = getattr(F, self.act)(out)
+            if self.pool == "set2set":
+                graph_embedding = global_mean_pool(out, data.batch)
+            else:
+                graph_embedding = getattr(torch_geometric.nn, self.pool)(out, data.batch)
             out = self.lin_out(out)
             if self.pool == "set2set":
                 out = self.set2set(out, data.batch)
                 out = self.lin_out_2(out)
             else:
                 out = getattr(torch_geometric.nn, self.pool)(out, data.batch)
-        if self.get_embedding:
+                
+        if self.get_node_embedding:
             if out.shape[1] == 1 :
-                return out.view(-1), embedding
+                return out.view(-1), node_embedding
             else:
-                return out, embedding
+                return out, node_embedding
+                
+        elif self.get_graph_embedding:
+            if out.shape[1] == 1 :
+                return out.view(-1), graph_embedding
+            else:
+                return out, graph_embedding
         else:
             if out.shape[1] == 1 :
                 return out.view(-1)
