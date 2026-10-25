@@ -153,7 +153,7 @@ class ImprovedAttentionCombiner(nn.Module):
             self.norm1 = nn.LayerNorm(dim)
             self.norm2 = nn.LayerNorm(dim)
 
-        def forward(self, supervised_embedding, transformer_embedding):
+        def forward(self, supervised_embedding, transformer_embedding, node_mask=None):
             batch_size = supervised_embedding.size(0)
 
             # Layer normalization
@@ -170,6 +170,8 @@ class ImprovedAttentionCombiner(nn.Module):
             attention_scores = torch.matmul(query, key.transpose(-2, -1)) / (self.head_dim ** 0.5)
             if torch.isnan(attention_scores).any() or torch.isinf(attention_scores).any():
                 raise ValueError("NaN or Inf detected in attention_scores")
+            if node_mask is not None:
+                attention_scores = attention_scores.masked_fill(~node_mask[:, None, None, :],float("-inf"))
             attention_weights = self.softmax(attention_scores)
             attention_weights = self.dropout(attention_weights)  # Apply dropout
             combined = torch.matmul(attention_weights, value)
